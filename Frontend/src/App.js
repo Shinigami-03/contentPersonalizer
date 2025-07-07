@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Signup from './components/Signup';
 import MusicPage from './pages/MusicPage';
 import Chatbot from './components/Chatbot';
+import ArtistPage from './pages/ArtistPage';
 
 function App() {
   const [recommendations, setRecommendations] = useState([]);
@@ -132,7 +133,7 @@ function App() {
             <li><Link to="/">Home</Link></li>
             <li><Link to="/movies">Movies</Link></li>
             <li><Link to="/music">Music</Link></li>
-            <li><Link to="#articles">Articles</Link></li>
+            <li><Link to="/artist">Artist</Link></li>
             <li><Link to="/login">Login</Link></li>
             <li><Link to="/signup">Sign Up</Link></li>
           </ul>
@@ -230,6 +231,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/music" element={<MusicPage />} />
+          <Route path="/artist" element={<ArtistPage />} />
         </Routes>
       </div>
     </Router>

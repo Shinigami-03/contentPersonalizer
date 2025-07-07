@@ -338,3 +338,13 @@ def get_all_music():
     music = load_music_dataset()
     return JSONResponse(content=music)
 
+@app.get("/all-artists")
+def get_all_artists():
+    csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'MusicArtists.csv')
+    artists = []
+    with open(csv_path, encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            artists.append(row)
+    return JSONResponse(content=artists)
+
