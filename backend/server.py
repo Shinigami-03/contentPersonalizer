@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # === server.py ===
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import csv
 import os
-=======
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -20,7 +20,6 @@ import csv
 import os
 from fastapi.responses import JSONResponse
 import sqlite3
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
 
 app = FastAPI()
 
@@ -32,7 +31,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-<<<<<<< HEAD
 MOVIES_DATASET = []
 MOVIES_CSV_PATH = os.path.join(os.path.dirname(__file__), 'dataset', 'Movies.csv')
 
@@ -53,7 +51,7 @@ class RecommendationRequest(BaseModel):
     num_items: int = 6
     page: int = 1
     user_profile: dict = None
-=======
+
 class UserProfile(BaseModel):
     user_id: str
     interests: Optional[List[str]] = None
@@ -64,13 +62,13 @@ class RecommendationRequest(BaseModel):
     num_items: int = 5
     page: int = 1
     query: Optional[str] = None
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
+
 
 class RecommendationResponse(BaseModel):
     recommendations: List[dict]
     total: int
 
-<<<<<<< HEAD
+
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 movie_vectors = []
@@ -159,7 +157,7 @@ def load_embeddings():
 @app.get("/all-movies")
 def get_all_movies():
     return MOVIES_DATASET
-=======
+
 # --- RAG Pipeline Components (Stubs) ---
 # In a real system, these would use libraries like langchain, llama-cpp-python, sentence-transformers, faiss/chromadb, etc.
 
@@ -339,4 +337,4 @@ def get_all_movies():
 def get_all_music():
     music = load_music_dataset()
     return JSONResponse(content=music)
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
+

@@ -4,16 +4,10 @@ import './App.css';
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import MoviesPage from './pages/MoviesPage';
-<<<<<<< HEAD
 import Login from './pages/Login';
 import Signup from './components/Signup';
 import MusicPage from './pages/MusicPage';
 import Chatbot from './components/Chatbot';
-=======
-import LoginPage from './pages/LoginPage';
-import SignupPage from './pages/SignupPage';
-import MusicPage from './pages/MusicPage';
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
 
 function App() {
   const [recommendations, setRecommendations] = useState([]);
@@ -24,10 +18,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 6;
-<<<<<<< HEAD
   const [showChatbot, setShowChatbot] = useState(false);
-=======
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
 
   const fetchRecommendations = async (query, page = 1) => {
     console.log('Setting loading to true');
@@ -93,7 +84,6 @@ function App() {
     // Initial fetch for recommendations on component mount
     fetchRecommendations("");
   }, []);
-<<<<<<< HEAD
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -129,8 +119,6 @@ function App() {
       setChatInput("");
     }
   };
-=======
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
 
   return (
     <Router>
@@ -151,11 +139,7 @@ function App() {
         </nav>
         <Routes>
           <Route path="/" element={
-<<<<<<< HEAD
             <header className="App-header" style={{background: 'none', color: '#222', paddingTop: '62px'}}>
-=======
-            <header className="App-header" style={{background: 'none', color: '#222', paddingTop: '62px'}}> {/* Added paddingTop to account for fixed navbar */}
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
               <h2>Content Personalization Agent</h2>
               <form onSubmit={handleSearch} className="search-bar">
                 <input
@@ -227,7 +211,6 @@ function App() {
                   )}
                 </div>
               )}
-<<<<<<< HEAD
               {/* Floating Chatbot Button */}
               <div className="chatbot-fab" onClick={() => setShowChatbot(true)}>
                 <img src={logo} alt="Chatbot" className="chatbot-fab-logo" />
@@ -246,13 +229,6 @@ function App() {
           <Route path="/movies" element={<MoviesPage recommendations={recommendations} />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
-=======
-            </header>
-          } />
-          <Route path="/movies" element={<MoviesPage recommendations={recommendations} />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
->>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
           <Route path="/music" element={<MusicPage />} />
         </Routes>
       </div>
