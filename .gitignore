@@ -1,0 +1,33 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+<<<<<<< HEAD
+Thumbs.db
+
+# Large files
+backend/dataset/movies.db
+backend/dataset/music.db
+=======
+Thumbs.db 
+>>>>>>> 0644958d0980bf2bb4643d26e91ee45357ce7653
