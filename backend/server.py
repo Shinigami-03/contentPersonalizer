@@ -1,25 +1,17 @@
-
-# === server.py ===
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Optional
+import os
+import sqlite3
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from difflib import SequenceMatcher
+import time
 import csv
-import os
-
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-import csv
-import os
-from fastapi.responses import JSONResponse
-import sqlite3
 
 app = FastAPI()
 
@@ -31,213 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MOVIES_DATASET = []
-MOVIES_CSV_PATH = os.path.join(os.path.dirname(__file__), 'dataset', 'Movies.csv')
-
-with open(MOVIES_CSV_PATH, newline='', encoding='utf-8') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        MOVIES_DATASET.append(row)
-
-class QueryRequest(BaseModel):
-    query: str
-
-class QueryResponse(BaseModel):
-    answer: str
-    data_chunks: List[str]
-
-class RecommendationRequest(BaseModel):
-    query: str = None
-    num_items: int = 6
-    page: int = 1
-    user_profile: dict = None
-
-class UserProfile(BaseModel):
-    user_id: str
-    interests: Optional[List[str]] = None
-    history: Optional[List[str]] = None
-
-class RecommendationRequest(BaseModel):
-    user_profile: UserProfile
-    num_items: int = 5
-    page: int = 1
-    query: Optional[str] = None
-
-
-class RecommendationResponse(BaseModel):
-    recommendations: List[dict]
-    total: int
-
-
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-
-movie_vectors = []
-movie_metadata = []
-faiss_index = None
-
-def embed_movie_data():
-    global movie_vectors, movie_metadata, faiss_index
-    texts = []
-    movie_metadata.clear()
-
-    for movie in MOVIES_DATASET:
-        text = f"{movie['Title']} - {movie['Overview']}"
-        texts.append(text)
-        movie_metadata.append(movie)
-
-    embeddings = embedding_model.encode(texts, convert_to_numpy=True)
-    movie_vectors = embeddings
-
-    dim = embeddings.shape[1]
-    faiss_index = faiss.IndexFlatL2(dim)
-    faiss_index.add(embeddings)
-
-def search_semantic_movies(query, top_k=5):
-    query_embedding = embedding_model.encode([query], convert_to_numpy=True)
-    distances, indices = faiss_index.search(query_embedding, top_k)
-    return [movie_metadata[i] for i in indices[0]]
-
-def search_with_rules(query, top_k=5):
-    base_results = search_semantic_movies(query, top_k=100)
-    query_lower = query.lower()
-
-    for year in range(1950, 2030):
-        if str(year) in query:
-            base_results = [m for m in base_results if m.get("Release_Date", "").startswith(str(year))]
-            break
-
-    if "highest rating" in query_lower or "top rated" in query_lower:
-        base_results.sort(key=lambda m: float(m.get("Rating", 0)), reverse=True)
-    elif "lowest rating" in query_lower or "worst rated" in query_lower:
-        base_results.sort(key=lambda m: float(m.get("Rating", 0)))
-
-    if "action" in query_lower:
-        base_results = [m for m in base_results if "action" in m.get("Genre", "").lower()]
-    elif "comedy" in query_lower:
-        base_results = [m for m in base_results if "comedy" in m.get("Genre", "").lower()]
-
-    return base_results[:top_k]
-
-def recommend_similar_movies(title, top_k=5):
-    try:
-        index = next(i for i, m in enumerate(movie_metadata) if m['Title'].lower() == title.lower())
-        movie_vector = movie_vectors[index].reshape(1, -1)
-        similarities = cosine_similarity(movie_vector, movie_vectors)[0]
-        similar_indices = similarities.argsort()[::-1][1:top_k+1]
-        return [movie_metadata[i] for i in similar_indices]
-    except StopIteration:
-        return []
-
-@app.post("/recommend", response_model=RecommendationResponse)
-async def recommend_movies(request: RecommendationRequest):
-    relevant_movies = search_semantic_movies(request.query, top_k=100) if request.query else MOVIES_DATASET
-    if request.query:
-        relevant_movies = search_with_rules(request.query, top_k=len(relevant_movies))
-    start_index = (request.page - 1) * request.num_items
-    end_index = start_index + request.num_items
-    paginated_movies = relevant_movies[start_index:end_index]
-    return RecommendationResponse(recommendations=paginated_movies, total=len(relevant_movies))
-
-@app.post("/ask", response_model=QueryResponse)
-async def ask_question(request: QueryRequest):
-    relevant_movies = search_with_rules(request.query, top_k=5)
-    data_chunks = [f"{m['Title']} ({m['Release_Date']}) - {m['Genre']}\nRating: {m['Rating']}\n{m['Overview']}" for m in relevant_movies]
-    answer = "Here are some movies you might enjoy:\n\n" + "\n\n".join(data_chunks)
-    return QueryResponse(answer=answer, data_chunks=data_chunks)
-
-@app.post("/similar", response_model=RecommendationResponse)
-async def similar_movies(request: QueryRequest):
-    similar = recommend_similar_movies(request.query)
-    return RecommendationResponse(recommendations=similar, total=len(similar))
-
-@app.on_event("startup")
-def load_embeddings():
-    embed_movie_data()
-
-@app.get("/all-movies")
-def get_all_movies():
-    return MOVIES_DATASET
-
-# --- RAG Pipeline Components (Stubs) ---
-# In a real system, these would use libraries like langchain, llama-cpp-python, sentence-transformers, faiss/chromadb, etc.
-
-def retrieve_documents(user_profile, query, top_k=10):
-    # Simulate retrieval: always include the query in the results
-    docs = []
-    if query:
-        docs.append(f"Result for '{query}' (AI generated)")
-    # Add some personalized/history-based results
-    if user_profile.history:
-        docs.extend([f"Because you searched: {h}" for h in user_profile.history[:top_k-1]])
-    # Fallback generic content
-    while len(docs) < top_k:
-        docs.append(f"Popular content {len(docs)+1}")
-    return docs[:top_k]
-
-def generate_personalized_response(context_docs, user_profile, query):
-    # Simulate LLM response: return the docs as recommendations
-    return [
-        f"{doc}" for doc in context_docs
-    ]
-
-from fastapi import Query
-
-def init_db_from_csv():
-    db_path = os.path.join(os.path.dirname(__file__), 'dataset', 'movies.db')
-    csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'Movies.csv')
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS movies (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        Release_Date TEXT,
-        Title TEXT,
-        Overview TEXT,
-        Rating REAL,
-        Genre TEXT,
-        Poster_Url TEXT
-    )''')
-    with open(csv_path, encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            c.execute('''INSERT OR IGNORE INTO movies (Release_Date, Title, Overview, Rating, Genre, Poster_Url) VALUES (?, ?, ?, ?, ?, ?)''',
-                      (row['Release_Date'], row['Title'], row['Overview'], row['Rating'], row['Genre'], row['Poster_Url']))
-    conn.commit()
-    conn.close()
-
-init_db_from_csv()
-
-def init_music_db_from_csv():
-    db_path = os.path.join(os.path.dirname(__file__), 'dataset', 'music.db')
-    csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'spotify_music.csv')
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS music (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        artist TEXT,
-        top_genre TEXT,
-        year INTEGER,
-        bpm INTEGER,
-        nrgy INTEGER,
-        dnce INTEGER,
-        dB INTEGER,
-        live INTEGER,
-        val INTEGER,
-        dur INTEGER,
-        acous INTEGER,
-        spch INTEGER,
-        pop INTEGER
-    )''')
-    with open(csv_path, encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            c.execute('''INSERT OR IGNORE INTO music (title, artist, top_genre, year, bpm, nrgy, dnce, dB, live, val, dur, acous, spch, pop) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                      (row['title'], row['artist'], row['top genre'], row['year'], row['bpm'], row['nrgy'], row['dnce'], row['dB'], row['live'], row['val'], row['dur'], row['acous'], row['spch'], row['pop']))
-    conn.commit()
-    conn.close()
-
-init_music_db_from_csv()
-
+# Load movie dataset
 def load_movies_dataset():
     db_path = os.path.join(os.path.dirname(__file__), 'dataset', 'movies.db')
     conn = sqlite3.connect(db_path)
@@ -259,92 +45,212 @@ def load_movies_dataset():
 
 MOVIES_DATASET = load_movies_dataset()
 
-def find_similar_movies(query_title=None, query_genres=None, top_k=None):
-    from difflib import SequenceMatcher
-    results = []
-    for movie in MOVIES_DATASET:
-        title = movie.get('Title')
-        genres = movie.get('Genre')
-        score = 0
-        if query_title and title:
-            score += SequenceMatcher(None, query_title.lower(), title.lower()).ratio()
-        if query_genres and genres:
-            for genre in query_genres:
-                if genre.lower() in genres.lower():
-                    score += 0.5
-        if score > 0:
-            results.append((score, movie))
-    results.sort(reverse=True, key=lambda x: x[0])
-    if top_k:
-        return [m for _, m in results[:top_k]]
-    return [m for _, m in results]
+def load_artists_dataset():
+    artists = []
+    csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'MusicArtists.csv')
+    with open(csv_path, encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            artists.append(row)
+    return artists
 
-@app.post("/recommend", response_model=RecommendationResponse)
-async def recommend_content(req: RecommendationRequest, ai_only: bool = Query(False, description="Return only AI-generated content")):
-    query = getattr(req, 'query', None)
-    query_title = query if query else (req.user_profile.history[0] if req.user_profile.history else None)
-    query_genres = req.user_profile.interests if req.user_profile.interests else None
-    
-    # Get all matching movies first
-    all_matches = find_similar_movies(query_title=query_title, query_genres=query_genres, top_k=len(MOVIES_DATASET))
-    total_matches = len(all_matches)
-    
-    # Calculate pagination
-    start_idx = (req.page - 1) * req.num_items
-    end_idx = start_idx + req.num_items
-    
-    # Get paginated results
-    paginated_matches = all_matches[start_idx:end_idx]
-    
-    return RecommendationResponse(
-        recommendations=paginated_matches,
-        total=total_matches
-    )
+ARTISTS_DATASET = load_artists_dataset()
 
 def load_music_dataset():
-    db_path = os.path.join(os.path.dirname(__file__), 'dataset', 'music.db')
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor() 
-    c.execute('SELECT title, artist, top_genre, year, bpm, nrgy, dnce, dB, live, val, dur, acous, spch, pop FROM music')
     music = []
-    for row in c.fetchall():
-        song = {
-            'title': row[0],
-            'artist': row[1],
-            'top_genre': row[2],
-            'year': row[3],
-            'bpm': row[4],
-            'nrgy': row[5],
-            'dnce': row[6],
-            'dB': row[7],
-            'live': row[8],
-            'val': row[9],
-            'dur': row[10],
-            'acous': row[11],
-            'spch': row[12],
-            'pop': row[13]
-        }
-        music.append(song)
-    conn.close()
+    csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'spotify_music.csv')
+    with open(csv_path, encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            music.append(row)
     return music
+
+MUSIC_DATASET = load_music_dataset()
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+movie_vectors = []
+movie_metadata = []
+faiss_index = None
+
+def embed_movie_data():
+    global movie_vectors, movie_metadata, faiss_index
+    texts = []
+    movie_metadata.clear()
+
+    for movie in MOVIES_DATASET:
+        text = f"{movie['Title']} - {movie['Overview']}"
+        texts.append(text)
+        movie_metadata.append(movie)
+
+    embeddings = embedding_model.encode(texts, convert_to_numpy=True)
+    movie_vectors = embeddings
+
+    dim = embeddings.shape[1]
+    faiss_index = faiss.IndexFlatL2(dim)
+    faiss_index.add(embeddings)
+
+def recommend_similar_movies(title, top_k=20):
+    try:
+        index = next(i for i, m in enumerate(movie_metadata) if m['Title'].lower() == title.lower())
+        movie_vector = movie_vectors[index].reshape(1, -1)
+        similarities = cosine_similarity(movie_vector, movie_vectors)[0]
+        similar_indices = similarities.argsort()[::-1][1:top_k+1]
+        return [movie_metadata[i] for i in similar_indices]
+    except StopIteration:
+        return []
+
+def deduplicate_movies(movies):
+    seen_titles = set()
+    unique_movies = []
+    for movie in movies:
+        title = movie.get("Title")
+        if title and title.lower() not in seen_titles:
+            unique_movies.append(movie)
+            seen_titles.add(title.lower())
+    return unique_movies
+
+class QueryRequest(BaseModel):
+    query: str
+
+class QueryResponse(BaseModel):
+    answer: str
+    data_chunks: List[str]
+
+class UserProfile(BaseModel):
+    user_id: str
+    interests: Optional[List[str]] = None
+    history: Optional[List[str]] = None
+
+class RecommendationRequest(BaseModel):
+    user_profile: UserProfile
+    num_items: int = 5
+    page: int = 1
+    query: Optional[str] = None
+
+class RecommendationResponse(BaseModel):
+    recommendations: List[dict]
+    total: int
+
+@app.post("/ask", response_model=QueryResponse)
+async def ask_question(request: QueryRequest):
+    # Semantic Search
+    query_embedding = embedding_model.encode([request.query], convert_to_numpy=True)
+    distances, indices = faiss_index.search(query_embedding, 20)
+
+    semantic_candidates = [movie_metadata[i] for i in indices[0]]
+    semantic_scores = np.exp(-distances[0])
+    probabilities = semantic_scores / semantic_scores.sum()
+    selected_indices = np.random.choice(len(semantic_candidates), size=min(5, len(semantic_candidates)),
+                                        replace=False, p=probabilities)
+    semantic_movies = deduplicate_movies([semantic_candidates[i] for i in selected_indices])
+
+    # Genre Matching (Fully Dynamic + Random Weighted)
+    detected_genres = []
+    query_lower = request.query.lower()
+    for movie in MOVIES_DATASET:
+        genres = movie.get("Genre", "").lower().split(",")
+        for genre in genres:
+            genre = genre.strip()
+            if genre and genre in query_lower:
+                detected_genres.append(genre)
+    detected_genres = list(set(detected_genres))
+
+    genre_movies = []
+    if detected_genres:
+        matching_movies = []
+        for movie in MOVIES_DATASET:
+            movie_genres = [g.strip() for g in movie.get("Genre", "").lower().split(",")]
+            if any(g in movie_genres for g in detected_genres):
+                matching_movies.append(movie)
+        
+        if matching_movies:
+            ratings = np.array([safe_float(m.get('Rating', 0)) for m in matching_movies])
+            ratings = np.clip(ratings, 0.1, None)
+            probabilities = ratings / ratings.sum()
+            num_samples = min(5, len(matching_movies))
+            sampled_indices = np.random.choice(len(matching_movies), size=num_samples, replace=False, p=probabilities)
+            genre_movies = deduplicate_movies([matching_movies[i] for i in sampled_indices])
+
+    # Similar Movies Randomized
+    similar_candidates = recommend_similar_movies(request.query, top_k=20)
+    np.random.shuffle(similar_candidates)
+    similar_movies = deduplicate_movies(similar_candidates[:5])
+
+    # Build response
+    answer = "Here are some recommendations:\n\n"
+    if semantic_movies:
+        answer += "**Semantic Matches:**\n" + "\n".join(
+            [f"{m['Title']} ({m['Release_Date']}) - {m['Genre']} | Rating: {m['Rating']}" for m in semantic_movies]
+        ) + "\n\n"
+    else:
+        answer += "**Semantic Matches:**\nNo matches found.\n\n"
+
+    if detected_genres and genre_movies:
+        genre_list = ", ".join([g.capitalize() for g in detected_genres])
+        answer += f"**Genre Matches ({genre_list}):**\n" + "\n".join(
+            [f"{m['Title']} ({m['Release_Date']}) - {m['Genre']} | Rating: {m['Rating']}" for m in genre_movies]
+        ) + "\n\n"
+    elif detected_genres:
+        genre_list = ", ".join([g.capitalize() for g in detected_genres])
+        answer += f"**Genre Matches ({genre_list}):**\nNo matches found.\n\n"
+
+    if similar_movies:
+        answer += "**Similar Movies:**\n" + "\n".join(
+            [f"{m['Title']} ({m['Release_Date']}) - {m['Genre']} | Rating: {m['Rating']}" for m in similar_movies]
+        ) + "\n\n"
+    else:
+        answer += "**Similar Movies:**\nNo matches found.\n\n"
+
+    return QueryResponse(answer=answer, data_chunks=[answer])
+
+@app.post("/recommend", response_model=RecommendationResponse)
+async def recommend_content(req: RecommendationRequest, ai_only: bool = Query(False)):
+    query_title = req.query if req.query else (req.user_profile.history[0] if req.user_profile.history else None)
+    query_genres = req.user_profile.interests if req.user_profile.interests else None
+
+    results = []
+    for movie in MOVIES_DATASET:
+        score = 0
+        if query_title:
+            score += SequenceMatcher(None, query_title.lower(), movie.get("Title", "").lower()).ratio()
+        if query_genres:
+            movie_genres = [g.strip() for g in movie.get("Genre", "").lower().split(",")]
+            for genre in query_genres:
+                if genre.lower() in movie_genres:
+                    score += 0.5
+
+        if score > 0:
+            results.append((score, movie))
+
+    results.sort(reverse=True, key=lambda x: x[0])
+    all_matches = [m for _, m in results]
+    total = len(all_matches)
+    start = (req.page - 1) * req.num_items
+    end = start + req.num_items
+    paginated = all_matches[start:end]
+
+    return RecommendationResponse(recommendations=paginated, total=total)
 
 @app.get("/all-movies")
 def get_all_movies():
-    movies = load_movies_dataset()
-    return JSONResponse(content=movies)
-
-@app.get("/all-music")
-def get_all_music():
-    music = load_music_dataset()
-    return JSONResponse(content=music)
+    return JSONResponse(content=MOVIES_DATASET)
 
 @app.get("/all-artists")
 def get_all_artists():
-    csv_path = os.path.join(os.path.dirname(__file__), 'dataset', 'MusicArtists.csv')
-    artists = []
-    with open(csv_path, encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            artists.append(row)
-    return JSONResponse(content=artists)
+    return JSONResponse(content=ARTISTS_DATASET)
 
+@app.get("/all-music")
+def get_all_music():
+    return JSONResponse(content=MUSIC_DATASET)
+
+def safe_float(val):
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
+@app.on_event("startup")
+def startup_event():
+    start_time = time.time()
+    embed_movie_data()
+    end_time = time.time()
+    print(f"[Startup] Embedding and FAISS indexing completed in {end_time - start_time:.2f} seconds.")

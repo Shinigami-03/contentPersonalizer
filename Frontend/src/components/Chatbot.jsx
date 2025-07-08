@@ -28,11 +28,16 @@ const Chatbot = () => {
       });
       if (!response.ok) throw new Error("Failed to get response from AI");
       const data = await response.json();
-      const reply = endpoint === "/similar"
-        ? `Movies similar to "${queryText}":\n\n` + data.recommendations.map(m => `${m.Title} (${m.Release_Date}) - ${m.Genre} | Rating: ${m.Rating}`).join("\n\n")
-        : data.answer;
-
-      setChatHistory((prev) => [...prev, { sender: "ai", text: reply }]);
+      let reply;
+      if (endpoint === "/similar") {
+        reply = `Movies similar to "${queryText}":\n\n` + data.recommendations.map(m => `${m.Title} (${m.Release_Date}) - ${m.Genre} | Rating: ${m.Rating}`).join("\n\n");
+      } else {
+        // Format the answer to show categories distinctly
+        reply = data.answer
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/\n/g, '<br/>');
+      }
+      setChatHistory((prev) => [...prev, { sender: "ai", text: reply, isHtml: endpoint !== "/similar" }]);
     } catch (err) {
       setChatError(err.message);
     } finally {
@@ -47,7 +52,11 @@ const Chatbot = () => {
       <div className="chat-history">
         {chatHistory.map((msg, idx) => (
           <div key={idx} className={`chat-message ${msg.sender}`}>
-            <span className="chat-bubble">{msg.text}</span>
+            {msg.isHtml ? (
+              <span className="chat-bubble" dangerouslySetInnerHTML={{ __html: msg.text }} />
+            ) : (
+              <span className="chat-bubble">{msg.text}</span>
+            )}
           </div>
         ))}
         {chatLoading && <div className="chat-loading">AI is typing...</div>}
